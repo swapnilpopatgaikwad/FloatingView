@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+			  android:layout_width="wrap_content"
+			  android:layout_height="wrap_content"
+			  android:orientation="vertical"
+			  android:padding="10dp"
+			  android:background="#80ffffff">
+
+	<Button
+		android:id="@+id/floating_button"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:text="Emergency"
+		android:background="@android:color/holo_red_light"
+		android:textColor="@android:color/white"
+		android:padding="10dp" />
+</LinearLayout>
