@@ -23,6 +23,8 @@ namespace FloatingView
         private int initialX;
         private int initialY;
         private bool isHidden;
+        private bool isFloatingViewAdded;
+        private bool isHiddenViewAdded;
         private Timer hideTimer;
 
         public override void OnCreate()
@@ -61,11 +63,15 @@ namespace FloatingView
 
             windowManager = GetSystemService(WindowService).JavaCast<IWindowManager>();
             windowManager.AddView(floatingView, layoutParams);
+            isFloatingViewAdded = true;
 
             floatingView.FindViewById<Button>(Resource.Id.floating_button).Click += OnFloatingButtonClick;
 
             hideTimer = new Timer(10000) { AutoReset = false };
             hideTimer.Elapsed += (s, e) => RunOnUiThread(HideFloatingButton);
+
+            // Start the service in the foreground
+            StartForegroundService();
         }
 
         public override IBinder OnBind(Intent intent)
@@ -76,19 +82,25 @@ namespace FloatingView
         public override void OnDestroy()
         {
             base.OnDestroy();
-            if (floatingView != null)
+            if (isFloatingViewAdded)
             {
                 windowManager.RemoveView(floatingView);
+                isFloatingViewAdded = false;
             }
-            if (hiddenView != null)
+            if (isHiddenViewAdded)
             {
                 windowManager.RemoveView(hiddenView);
+                isHiddenViewAdded = false;
             }
         }
 
         private void OnFloatingButtonClick(object sender, EventArgs e)
         {
-            Toast.MakeText(this, "Emergency Button Clicked", ToastLength.Short).Show();
+            RunOnUiThread(() =>
+            {
+                Toast.MakeText(this, "Emergency Button Clicked", ToastLength.Short).Show();
+            });
+            // Handle the button click action here
         }
 
         public bool OnTouch(View v, MotionEvent e)
@@ -104,9 +116,10 @@ namespace FloatingView
                     return true;
 
                 case MotionEventActions.Up:
+                    // Stick to the edge and update drawable based on the side
                     if (layoutParams.X < (windowManager.DefaultDisplay.Width / 2))
                     {
-                        layoutParams.X = 0; 
+                        layoutParams.X = 0;
                     }
                     else
                     {
@@ -127,12 +140,18 @@ namespace FloatingView
 
         private void ShowHiddenView()
         {
+            if (isFloatingViewAdded)
+            {
+                windowManager.RemoveView(floatingView);
+                isFloatingViewAdded = false;
+            }
+
             isHidden = true;
             hiddenLayoutParams.X = layoutParams.X < (windowManager.DefaultDisplay.Width / 2) ? 0 : windowManager.DefaultDisplay.Width - hiddenView.Width;
             hiddenLayoutParams.Y = layoutParams.Y;
             hiddenView.Background = layoutParams.X < (windowManager.DefaultDisplay.Width / 2) ? GetDrawable(Resource.Drawable.rounded_corners_left) : GetDrawable(Resource.Drawable.rounded_corners_right); // Updated here
-            windowManager.RemoveView(floatingView);
             windowManager.AddView(hiddenView, hiddenLayoutParams);
+            isHiddenViewAdded = true;
         }
 
         private void OnHiddenViewClick(object sender, EventArgs e)
@@ -143,9 +162,15 @@ namespace FloatingView
 
         private void ShowFloatingButton()
         {
+            if (isHiddenViewAdded)
+            {
+                windowManager.RemoveView(hiddenView);
+                isHiddenViewAdded = false;
+            }
+
             isHidden = false;
-            windowManager.RemoveView(hiddenView);
             windowManager.AddView(floatingView, layoutParams);
+            isFloatingViewAdded = true;
         }
 
         private void HideFloatingButton()
@@ -160,6 +185,28 @@ namespace FloatingView
         {
             var handler = new Handler(Looper.MainLooper);
             handler.Post(action);
+        }
+
+        private void StartForegroundService()
+        {
+            var channelId = "floating_button_channel";
+            var channelName = "Floating Button Service";
+
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+            {
+                var notificationChannel = new NotificationChannel(channelId, channelName, NotificationImportance.Low);
+                var notificationManager = (NotificationManager)GetSystemService(NotificationService);
+                notificationManager.CreateNotificationChannel(notificationChannel);
+            }
+
+            var notification = new Notification.Builder(this, channelId)
+                .SetContentTitle("Floating Button Service")
+                .SetContentText("Emergency button is active.")
+                .SetSmallIcon(Resource.Mipmap.ic_launcher_round)
+                .SetOngoing(true)
+                .Build();
+
+            StartForeground(1, notification);
         }
     }
 }

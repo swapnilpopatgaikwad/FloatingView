@@ -13,8 +13,6 @@ namespace FloatingView
         {
             base.OnCreate(savedInstanceState);
             Xamarin.Essentials.Platform.Init(this, savedInstanceState);
-            // Set our view from the "main" layout resource
-            //SetContentView(Resource.Layout.activity_main);
 
             // Check for overlay permission and request if not granted
             if (!Android.Provider.Settings.CanDrawOverlays(this))
@@ -40,13 +38,21 @@ namespace FloatingView
 
         private void StartFloatingButtonService()
         {
-            StartService(new Intent(this, typeof(FloatingButtonService)));
+            var intent = new Intent(this, typeof(FloatingButtonService));
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+            {
+                StartForegroundService(intent);
+            }
+            else
+            {
+                StartService(intent);
+            }
         }
 
         protected override void OnDestroy()
         {
             base.OnDestroy();
-            StopService(new Intent(this, typeof(FloatingButtonService)));
+            //StopService(new Intent(this, typeof(FloatingButtonService)));
         }
 
         public override void OnRequestPermissionsResult(int requestCode, string[] permissions, [GeneratedEnum] Android.Content.PM.Permission[] grantResults)
