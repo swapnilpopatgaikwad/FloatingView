@@ -7,6 +7,7 @@ using Android.Views;
 using Android.Widget;
 using System;
 using System.Timers;
+using Handler = Android.OS.Handler;
 
 namespace FloatingView
 {
@@ -18,6 +19,8 @@ namespace FloatingView
         private IWindowManager windowManager;
         private View floatingView;
         private View hiddenView;
+        private Button closeButton;
+        private Button emergencyButton;
         private float initialTouchX;
         private float initialTouchY;
         private int initialX;
@@ -26,6 +29,10 @@ namespace FloatingView
         private bool isFloatingViewAdded;
         private bool isHiddenViewAdded;
         private Timer hideTimer;
+        private int screenHeight;
+
+        private Handler handler = new Handler();
+        private const int CLICK_DELAY = 1000;
 
         public override void OnCreate()
         {
@@ -34,7 +41,12 @@ namespace FloatingView
             floatingView = LayoutInflater.From(this).Inflate(Resource.Layout.floating_button, null);
             hiddenView = LayoutInflater.From(this).Inflate(Resource.Layout.hidden_button, null);
 
+            emergencyButton = floatingView.FindViewById<Button>(Resource.Id.floating_button);
+            closeButton = floatingView.FindViewById<Button>(Resource.Id.close_button);
+
             floatingView.SetOnTouchListener(this);
+            closeButton.Click += OnCloseButtonClick;
+            emergencyButton.Click += OnEmergencyButtonClick;
             hiddenView.Click += OnHiddenViewClick;
 
             layoutParams = new WindowManagerLayoutParams(
@@ -65,12 +77,11 @@ namespace FloatingView
             windowManager.AddView(floatingView, layoutParams);
             isFloatingViewAdded = true;
 
-            floatingView.FindViewById<Button>(Resource.Id.floating_button).Click += OnFloatingButtonClick;
+            screenHeight = windowManager.DefaultDisplay.Height;
 
             hideTimer = new Timer(10000) { AutoReset = false };
             hideTimer.Elapsed += (s, e) => RunOnUiThread(HideFloatingButton);
 
-            // Start the service in the foreground
             StartForegroundService();
         }
 
@@ -94,13 +105,26 @@ namespace FloatingView
             }
         }
 
-        private void OnFloatingButtonClick(object sender, EventArgs e)
+        private void OnCloseButtonClick(object sender, EventArgs e)
+        {
+            StopSelf();
+        }
+
+        private void ShowToast(string message)
         {
             RunOnUiThread(() =>
             {
-                Toast.MakeText(this, "Emergency Button Clicked", ToastLength.Short).Show();
+                handler.PostDelayed(() =>
+                {
+                    Toast.MakeText(this, message, ToastLength.Short).Show();
+
+                }, CLICK_DELAY);
             });
-            // Handle the button click action here
+        }
+
+        private void OnEmergencyButtonClick(object sender, EventArgs e)
+        {
+            ShowToast("Emergency Button Clicked");
         }
 
         public bool OnTouch(View v, MotionEvent e)
@@ -116,23 +140,45 @@ namespace FloatingView
                     return true;
 
                 case MotionEventActions.Up:
-                    // Stick to the edge and update drawable based on the side
-                    if (layoutParams.X < (windowManager.DefaultDisplay.Width / 2))
+                    if (layoutParams.Y >= screenHeight - floatingView.Height * 2)
                     {
-                        layoutParams.X = 0;
+                        closeButton.Visibility = ViewStates.Visible;
+                        emergencyButton.Visibility = ViewStates.Gone;
                     }
                     else
                     {
-                        layoutParams.X = windowManager.DefaultDisplay.Width - floatingView.Width;
+                        closeButton.Visibility = ViewStates.Gone;
+                        emergencyButton.Visibility = ViewStates.Visible;
+
+                        if (layoutParams.X < (windowManager.DefaultDisplay.Width / 2))
+                        {
+                            layoutParams.X = 0;
+                        }
+                        else
+                        {
+                            layoutParams.X = windowManager.DefaultDisplay.Width - floatingView.Width;
+                        }
+                        windowManager.UpdateViewLayout(floatingView, layoutParams);
+
+                        ShowHiddenView();
                     }
-                    windowManager.UpdateViewLayout(floatingView, layoutParams);
-                    ShowHiddenView();
                     return true;
 
                 case MotionEventActions.Move:
                     layoutParams.X = initialX + (int)(e.RawX - initialTouchX);
                     layoutParams.Y = initialY + (int)(e.RawY - initialTouchY);
                     windowManager.UpdateViewLayout(floatingView, layoutParams);
+
+                    if (layoutParams.Y >= screenHeight - floatingView.Height * 2)
+                    {
+                        closeButton.Visibility = ViewStates.Visible;
+                        emergencyButton.Visibility = ViewStates.Gone;
+                    }
+                    else
+                    {
+                        closeButton.Visibility = ViewStates.Gone;
+                        emergencyButton.Visibility = ViewStates.Visible;
+                    }
                     return true;
             }
             return false;
@@ -146,10 +192,16 @@ namespace FloatingView
                 isFloatingViewAdded = false;
             }
 
+            if (isHiddenViewAdded)
+            {
+                windowManager.RemoveView(hiddenView);
+                isHiddenViewAdded = false;
+            }
+
             isHidden = true;
             hiddenLayoutParams.X = layoutParams.X < (windowManager.DefaultDisplay.Width / 2) ? 0 : windowManager.DefaultDisplay.Width - hiddenView.Width;
             hiddenLayoutParams.Y = layoutParams.Y;
-            hiddenView.Background = layoutParams.X < (windowManager.DefaultDisplay.Width / 2) ? GetDrawable(Resource.Drawable.rounded_corners_left) : GetDrawable(Resource.Drawable.rounded_corners_right); // Updated here
+            hiddenView.Background = layoutParams.X < (windowManager.DefaultDisplay.Width / 2) ? GetDrawable(Resource.Drawable.rounded_corners_left) : GetDrawable(Resource.Drawable.rounded_corners_right);
             windowManager.AddView(hiddenView, hiddenLayoutParams);
             isHiddenViewAdded = true;
         }
@@ -168,9 +220,13 @@ namespace FloatingView
                 isHiddenViewAdded = false;
             }
 
+            if (!isFloatingViewAdded)
+            {
+                windowManager.AddView(floatingView, layoutParams);
+                isFloatingViewAdded = true;
+            }
+
             isHidden = false;
-            windowManager.AddView(floatingView, layoutParams);
-            isFloatingViewAdded = true;
         }
 
         private void HideFloatingButton()
